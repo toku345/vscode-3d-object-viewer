@@ -1,8 +1,17 @@
 import * as vscode from 'vscode';
+import { WebviewContentProvider } from './webviewContentProvider';
 
 export class ViewerPanelManager {
 	private static panels: Map<string, vscode.WebviewPanel> = new Map();
 	private static panelCounter: number = 0;
+	private static contentProvider: WebviewContentProvider;
+
+	/**
+	 * Initialize the ViewerPanelManager with context
+	 */
+	public static initialize(context: vscode.ExtensionContext): void {
+		ViewerPanelManager.contentProvider = new WebviewContentProvider(context);
+	}
 
 	/**
 	 * Create a new 3D Viewer panel or show an existing one
@@ -30,8 +39,8 @@ export class ViewerPanelManager {
 		// Store the panel
 		ViewerPanelManager.panels.set(panelId, panel);
 
-		// Set the webview's initial html content
-		panel.webview.html = ViewerPanelManager.getWebviewContent(panel.webview, extensionUri);
+		// Set the webview's initial html content using WebviewContentProvider
+		panel.webview.html = ViewerPanelManager.contentProvider.getHtmlContent(panel.webview);
 
 		// Handle panel disposal
 		panel.onDidDispose(
@@ -110,10 +119,10 @@ export class ViewerPanelManager {
 	/**
 	 * Update panel content
 	 */
-	public static updatePanel(panelId: string, content: string): boolean {
+	public static updatePanel(panelId: string): boolean {
 		const panel = ViewerPanelManager.panels.get(panelId);
 		if (panel) {
-			panel.webview.html = content;
+			panel.webview.html = ViewerPanelManager.contentProvider.getHtmlContent(panel.webview);
 			return true;
 		}
 		return false;
@@ -136,101 +145,5 @@ export class ViewerPanelManager {
 	private static onPanelVisible(panelId: string): void {
 		// This can be used for refreshing content or other visibility-related actions
 		console.log(`Panel ${panelId} became visible`);
-	}
-
-	/**
-	 * Generate webview content
-	 */
-	private static getWebviewContent(webview: vscode.Webview, _extensionUri: vscode.Uri): string {
-		// Use a nonce to only allow specific scripts to be run
-		const nonce = ViewerPanelManager.getNonce();
-
-		// Get Three.js from CDN
-		const threejsUri = 'https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js';
-
-		return `<!DOCTYPE html>
-			<html lang="en">
-			<head>
-				<meta charset="UTF-8">
-				<meta name="viewport" content="width=device-width, initial-scale=1.0">
-				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net;">
-				<title>3D Viewer</title>
-				<style>
-					body {
-						margin: 0;
-						padding: 0;
-						overflow: hidden;
-						background-color: #1e1e1e;
-						font-family: var(--vscode-font-family);
-					}
-					#canvas-container {
-						width: 100vw;
-						height: 100vh;
-						position: relative;
-					}
-					#info {
-						position: absolute;
-						top: 10px;
-						left: 10px;
-						color: var(--vscode-foreground);
-						background: var(--vscode-editor-background);
-						padding: 10px;
-						border-radius: 4px;
-						font-size: 12px;
-						opacity: 0.9;
-					}
-					#error-message {
-						color: var(--vscode-errorForeground);
-						padding: 20px;
-						text-align: center;
-					}
-				</style>
-			</head>
-			<body>
-				<div id="canvas-container">
-					<div id="info">
-						3D Viewer initialized<br>
-						Use mouse to interact
-					</div>
-				</div>
-				<script nonce="${nonce}" src="${threejsUri}"></script>
-				<script nonce="${nonce}">
-					// Initialize Three.js scene
-					const container = document.getElementById('canvas-container');
-					
-					// Check WebGL support
-					if (!window.WebGLRenderingContext) {
-						const errorDiv = document.createElement('div');
-						errorDiv.id = 'error-message';
-						errorDiv.textContent = 'WebGL is not supported in your browser.';
-						container.innerHTML = '';
-						container.appendChild(errorDiv);
-					} else {
-						// Placeholder for Three.js scene initialization
-						// This will be implemented in the next tasks
-						console.log('Three.js loaded, ready for scene initialization');
-					}
-
-					// Listen for messages from the extension
-					window.addEventListener('message', event => {
-						const message = event.data;
-						console.log('Received message:', message);
-						// Handle messages from the extension here
-					});
-				</script>
-			</body>
-			</html>`;
-	}
-
-	/**
-	 * Generate a nonce for CSP
-	 */
-	private static getNonce(): string {
-		let text = '';
-		const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-		for (let i = 0; i < 32; i++) {
-			text += possible.charAt(Math.floor(Math.random() * possible.length));
-		}
-		return text;
 	}
 }

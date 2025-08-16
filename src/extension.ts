@@ -4,6 +4,9 @@ import { ViewerPanelManager } from './ViewerPanelManager';
 export function activate(context: vscode.ExtensionContext) {
 	console.log('3D Object Viewer extension is now active!');
 
+	// Initialize the ViewerPanelManager with context
+	ViewerPanelManager.initialize(context);
+
 	// Register the command for opening the 3D viewer
 	const disposable = vscode.commands.registerCommand('3d-object-viewer-kiro.open3DViewer', () => {
 		const panelId = ViewerPanelManager.createPanel(context.extensionUri);
