@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "3d-object-viewer-kiro.helloWorld",
-        "title": "Hello World"
+        "command": "3d-object-viewer-kiro.open3DViewer",
+        "title": "3D Viewer: Open"
       }
     ]
   },

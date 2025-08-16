@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. プロジェクト基盤の設定とコマンド登録
+- [x] 1. プロジェクト基盤の設定とコマンド登録
   - package.jsonに3D Viewerコマンドを追加し、適切なactivationEventsを設定する
   - extension.tsでコマンドハンドラーを登録し、基本的な拡張機能構造を確立する
   - _Requirements: 1.1_
