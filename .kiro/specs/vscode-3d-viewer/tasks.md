@@ -5,7 +5,7 @@
   - extension.tsでコマンドハンドラーを登録し、基本的な拡張機能構造を確立する
   - _Requirements: 1.1_
 
-- [ ] 2. Webviewパネル管理システムの実装
+- [x] 2. Webviewパネル管理システムの実装
   - WebviewパネルのCRUD操作を管理するViewerPanelManagerクラスを作成する
   - パネルの作成、設定、破棄を適切に処理するメソッドを実装する
   - _Requirements: 1.1, 1.3, 4.4_
