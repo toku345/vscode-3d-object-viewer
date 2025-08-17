@@ -45,6 +45,15 @@ export class ViewerPanelManager {
 		// Handle panel disposal
 		panel.onDidDispose(
 			() => {
+				// Send cleanup message to webview before disposal
+				panel.webview.postMessage({ command: 'dispose' }).then(
+					() => {
+						// Message sent successfully
+					},
+					() => {
+						// Ignore errors if webview is already disposed
+					}
+				);
 				ViewerPanelManager.disposePanel(panelId);
 			},
 			null,
@@ -104,6 +113,15 @@ export class ViewerPanelManager {
 	 */
 	public static disposeAll(): void {
 		ViewerPanelManager.panels.forEach((panel) => {
+			// Send cleanup message to webview before disposal
+			panel.webview.postMessage({ command: 'dispose' }).then(
+				() => {
+					// Message sent successfully
+				},
+				() => {
+					// Ignore errors if webview is already disposed
+				}
+			);
 			panel.dispose();
 		});
 		ViewerPanelManager.panels.clear();

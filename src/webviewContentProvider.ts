@@ -53,6 +53,9 @@ export class WebviewContentProvider {
 
     private getViewerScript(): string {
         return `
+        // Global variables for resource management
+        let viewerResources = null;
+
         // WebGL support check
         function isWebGLSupported() {
             try {
@@ -70,6 +73,77 @@ export class WebviewContentProvider {
             errorDiv.style.display = 'block';
         }
 
+        // Resource cleanup function
+        function cleanupResources() {
+            if (!viewerResources) return;
+
+            console.log('Cleaning up 3D viewer resources...');
+
+            // Stop animation loop
+            if (viewerResources.animationId) {
+                cancelAnimationFrame(viewerResources.animationId);
+                viewerResources.animationId = null;
+            }
+
+            // Remove event listeners
+            if (viewerResources.eventListeners) {
+                viewerResources.eventListeners.forEach(({ element, event, handler }) => {
+                    element.removeEventListener(event, handler);
+                });
+                viewerResources.eventListeners = [];
+            }
+
+            // Dispose Three.js resources
+            if (viewerResources.scene) {
+                // Dispose all objects in the scene
+                viewerResources.scene.traverse((object) => {
+                    if (object.geometry) {
+                        object.geometry.dispose();
+                    }
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(material => material.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                    if (object.texture) {
+                        object.texture.dispose();
+                    }
+                });
+                viewerResources.scene.clear();
+            }
+
+            // Dispose renderer
+            if (viewerResources.renderer) {
+                viewerResources.renderer.dispose();
+                viewerResources.renderer.forceContextLoss();
+                
+                // Remove canvas from DOM
+                const canvas = viewerResources.renderer.domElement;
+                if (canvas && canvas.parentNode) {
+                    canvas.parentNode.removeChild(canvas);
+                }
+            }
+
+            // Clear references
+            viewerResources = null;
+
+            console.log('3D viewer resources cleaned up successfully');
+        }
+
+        // Setup cleanup on page unload
+        window.addEventListener('beforeunload', cleanupResources);
+        window.addEventListener('unload', cleanupResources);
+
+        // Listen for VS Code webview disposal message
+        window.addEventListener('message', (event) => {
+            const message = event.data;
+            if (message.command === 'dispose') {
+                cleanupResources();
+            }
+        });
+
         // Main initialization
         if (!isWebGLSupported()) {
             showError('WebGL is not supported in your environment. Please use a WebGL-compatible browser.');
@@ -78,46 +152,62 @@ export class WebviewContentProvider {
                 initializeViewer();
             } catch (error) {
                 showError('Failed to initialize 3D viewer: ' + error.message);
+                cleanupResources();
             }
         }
 
         function initializeViewer() {
+            // Initialize resource tracking object
+            viewerResources = {
+                scene: null,
+                camera: null,
+                renderer: null,
+                cube: null,
+                geometry: null,
+                material: null,
+                lights: [],
+                animationId: null,
+                eventListeners: []
+            };
+
             // Scene setup
-            const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1e1e1e);
+            viewerResources.scene = new THREE.Scene();
+            viewerResources.scene.background = new THREE.Color(0x1e1e1e);
 
             // Camera setup
-            const camera = new THREE.PerspectiveCamera(
+            viewerResources.camera = new THREE.PerspectiveCamera(
                 75,
                 window.innerWidth / window.innerHeight,
                 0.1,
                 1000
             );
-            camera.position.z = 5;
+            viewerResources.camera.position.z = 5;
 
             // Renderer setup
-            const renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            viewerResources.renderer = new THREE.WebGLRenderer({ antialias: true });
+            viewerResources.renderer.setSize(window.innerWidth, window.innerHeight);
+            viewerResources.renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(viewerResources.renderer.domElement);
 
             // Create cube
-            const geometry = new THREE.BoxGeometry(2, 2, 2);
-            const material = new THREE.MeshPhongMaterial({ 
+            viewerResources.geometry = new THREE.BoxGeometry(2, 2, 2);
+            viewerResources.material = new THREE.MeshPhongMaterial({ 
                 color: 0x0099ff,
                 specular: 0x111111,
                 shininess: 100
             });
-            const cube = new THREE.Mesh(geometry, material);
-            scene.add(cube);
+            viewerResources.cube = new THREE.Mesh(viewerResources.geometry, viewerResources.material);
+            viewerResources.scene.add(viewerResources.cube);
 
             // Lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
+            viewerResources.scene.add(ambientLight);
+            viewerResources.lights.push(ambientLight);
 
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(10, 10, 5);
-            scene.add(directionalLight);
+            viewerResources.scene.add(directionalLight);
+            viewerResources.lights.push(directionalLight);
 
             // Interaction state
             let isDragging = false;
@@ -126,42 +216,43 @@ export class WebviewContentProvider {
             const minScale = 0.5;
             const maxScale = 3;
 
-            // Mouse interaction handlers
-            renderer.domElement.addEventListener('mousedown', (e) => {
+            // Mouse interaction handlers with cleanup tracking
+            const mouseDownHandler = (e) => {
                 isDragging = true;
                 previousMousePosition = {
                     x: e.clientX,
                     y: e.clientY
                 };
-            });
+            };
 
-            renderer.domElement.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
+            const mouseMoveHandler = (e) => {
+                if (!isDragging || !viewerResources || !viewerResources.cube) return;
 
                 const deltaMove = {
                     x: e.clientX - previousMousePosition.x,
                     y: e.clientY - previousMousePosition.y
                 };
 
-                cube.rotation.y += deltaMove.x * 0.01;
-                cube.rotation.x += deltaMove.y * 0.01;
+                viewerResources.cube.rotation.y += deltaMove.x * 0.01;
+                viewerResources.cube.rotation.x += deltaMove.y * 0.01;
 
                 previousMousePosition = {
                     x: e.clientX,
                     y: e.clientY
                 };
-            });
+            };
 
-            renderer.domElement.addEventListener('mouseup', () => {
+            const mouseUpHandler = () => {
                 isDragging = false;
-            });
+            };
 
-            renderer.domElement.addEventListener('mouseleave', () => {
+            const mouseLeaveHandler = () => {
                 isDragging = false;
-            });
+            };
 
-            // Wheel interaction for zoom
-            renderer.domElement.addEventListener('wheel', (e) => {
+            const wheelHandler = (e) => {
+                if (!viewerResources || !viewerResources.cube) return;
+                
                 e.preventDefault();
                 
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -169,21 +260,47 @@ export class WebviewContentProvider {
                 
                 if (newScale >= minScale && newScale <= maxScale) {
                     currentScale = newScale;
-                    cube.scale.set(currentScale, currentScale, currentScale);
+                    viewerResources.cube.scale.set(currentScale, currentScale, currentScale);
                 }
-            });
+            };
 
-            // Handle window resize
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
+            const resizeHandler = () => {
+                if (!viewerResources || !viewerResources.camera || !viewerResources.renderer) return;
+                
+                viewerResources.camera.aspect = window.innerWidth / window.innerHeight;
+                viewerResources.camera.updateProjectionMatrix();
+                viewerResources.renderer.setSize(window.innerWidth, window.innerHeight);
+            };
 
-            // Animation loop
+            // Add event listeners and track them for cleanup
+            const canvas = viewerResources.renderer.domElement;
+            
+            canvas.addEventListener('mousedown', mouseDownHandler);
+            viewerResources.eventListeners.push({ element: canvas, event: 'mousedown', handler: mouseDownHandler });
+            
+            canvas.addEventListener('mousemove', mouseMoveHandler);
+            viewerResources.eventListeners.push({ element: canvas, event: 'mousemove', handler: mouseMoveHandler });
+            
+            canvas.addEventListener('mouseup', mouseUpHandler);
+            viewerResources.eventListeners.push({ element: canvas, event: 'mouseup', handler: mouseUpHandler });
+            
+            canvas.addEventListener('mouseleave', mouseLeaveHandler);
+            viewerResources.eventListeners.push({ element: canvas, event: 'mouseleave', handler: mouseLeaveHandler });
+            
+            canvas.addEventListener('wheel', wheelHandler);
+            viewerResources.eventListeners.push({ element: canvas, event: 'wheel', handler: wheelHandler });
+            
+            window.addEventListener('resize', resizeHandler);
+            viewerResources.eventListeners.push({ element: window, event: 'resize', handler: resizeHandler });
+
+            // Animation loop with cleanup check
             function animate() {
-                requestAnimationFrame(animate);
-                renderer.render(scene, camera);
+                if (!viewerResources || !viewerResources.renderer || !viewerResources.scene || !viewerResources.camera) {
+                    return; // Stop animation if resources are cleaned up
+                }
+                
+                viewerResources.animationId = requestAnimationFrame(animate);
+                viewerResources.renderer.render(viewerResources.scene, viewerResources.camera);
             }
 
             animate();
